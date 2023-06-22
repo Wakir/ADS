@@ -11,6 +11,9 @@ import torch_geometric
 from IPython.display import set_matplotlib_formats
 from matplotlib.colors import to_rgb
 import matplotlib
+
+from src.Models.ezGNN import GNNClassifier
+
 matplotlib.rcParams['lines.linewidth'] = 2.0
 import seaborn as sns
 sns.reset_orig()
@@ -25,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
 import torch.optim as optim
+
 # Torchvision
 import torchvision
 from torchvision.datasets import CIFAR10
@@ -35,6 +39,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
 import torch_geometric.nn as geom_nn
 import torch_geometric.data as geom_data
+from torch_geometric.data import DataLoader
+from torch_geometric.datasets import TUDataset
 from Models.GraphNN import *
 # Path to the folder where the datasets are/should be downloaded (e.g. CIFAR10)
 DATASET_PATH = "../data/datasets/"
@@ -125,8 +131,35 @@ def run():
                                            dp_rate_linear=0.5,
                                            dp_rate=0.0)
 
-    # print(f"Train performance: {100.0 * result['train']:4.2f}%")
-    # print(f"Test performance:  {100.0 * result['test']:4.2f}%")
+    print(f"Train performance: {100.0 * result['train']:4.2f}%")
+    print(f"Test performance:  {100.0 * result['test']:4.2f}%")
+
+
+def train(model, train_loader):
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    model.train()
+    for data in train_loader:
+        data = data.to(device)
+        optimizer.zero_grad()
+        output = model(data.x, data.edge_index, data.batch)
+        loss = F.nll_loss(output, data.y)
+        loss.backward()
+        optimizer.step()
+
+
+def test(model, test_loader):
+    model.eval()
+    correct = 0
+    total = 0
+    for data in test_loader:
+        data = data.to(device)
+        output = model(data.x, data.edge_index, data.batch)
+        _, predicted = torch.max(output.data, 1)
+        total += data.y.size(0)
+        correct += (predicted == data.y).sum().item()
+    accuracy = 100 * correct / total
+    return accuracy
 
 
 if __name__ == '__main__':

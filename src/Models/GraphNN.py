@@ -3,7 +3,12 @@ import torch_geometric.nn as geom_nn
 import torch_geometric.data as geom_data
 import torch.optim as optim
 import pytorch_lightning as pl
-
+from torch_geometric.nn import (
+    global_mean_pool,
+    global_max_pool,
+    global_add_pool,
+    DeepSetsAggregation,
+)
 
 gnn_layer_by_name = {
     "GCN": geom_nn.GCNConv,
@@ -63,7 +68,7 @@ class GNNModel(nn.Module):
 
 class GraphGNNModel(nn.Module):
 
-    def __init__(self, c_in, c_hidden, c_out, dp_rate_linear=0.5, **kwargs):
+    def __init__(self, c_in, c_hidden, c_out, dp_rate_linear=0.5, graph_pooling="mean", **kwargs):
         """
         Inputs:
             c_in - Dimension of input features
@@ -82,6 +87,15 @@ class GraphGNNModel(nn.Module):
             nn.Linear(c_hidden, c_out)
         )
 
+        if graph_pooling == "mean":
+            self.pooling = global_mean_pool
+        elif graph_pooling == "max":
+            self.pooling = global_max_pool
+        elif graph_pooling == "sum":
+            self.pooling = global_add_pool
+        elif graph_pooling == "deepsets":
+            self.pooling = DeepSetsAggregation()
+
     def forward(self, x, edge_index, batch_idx):
         """
         Inputs:
@@ -90,7 +104,7 @@ class GraphGNNModel(nn.Module):
             batch_idx - Index of batch element for each node
         """
         x = self.GNN(x, edge_index)
-        x = geom_nn.global_mean_pool(x, batch_idx) # Average pooling
+        x = self.pooling(x, batch_idx) # default: Average pooling
         x = self.head(x)
         return x
 
