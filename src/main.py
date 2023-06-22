@@ -12,10 +12,9 @@ from IPython.display import set_matplotlib_formats
 from matplotlib.colors import to_rgb
 import matplotlib
 
-from src.Models.ezGNN import GNNClassifier
-
 matplotlib.rcParams['lines.linewidth'] = 2.0
 import seaborn as sns
+
 sns.reset_orig()
 sns.set()
 
@@ -42,6 +41,7 @@ import torch_geometric.data as geom_data
 from torch_geometric.data import DataLoader
 from torch_geometric.datasets import TUDataset
 from Models.GraphNN import *
+
 # Path to the folder where the datasets are/should be downloaded (e.g. CIFAR10)
 DATASET_PATH = "../data/datasets/"
 # Path to the folder where the pretrained models are saved
@@ -54,7 +54,8 @@ device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("
 print(device)
 
 
-def train_graph_classifier(model_name, tu_dataset, graph_train_loader, graph_val_loader, graph_test_loader, **model_kwargs):
+def train_graph_classifier(model_name, tu_dataset, graph_train_loader, graph_val_loader, graph_test_loader,
+                           **model_kwargs):
     pl.seed_everything(42)
 
     # Create a PyTorch Lightning trainer with the generation callback
@@ -66,7 +67,7 @@ def train_graph_classifier(model_name, tu_dataset, graph_train_loader, graph_val
                          devices=1,
                          max_epochs=500,
                          enable_progress_bar=False)
-    trainer.logger._default_hp_metric = None # Optional logging argument that we don't need
+    trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
 
     # Check whether pretrained model exists. If yes, load it and skip training
     pretrained_filename = os.path.join(CHECKPOINT_PATH, f"GraphLevel{model_name}.ckpt")
@@ -76,7 +77,7 @@ def train_graph_classifier(model_name, tu_dataset, graph_train_loader, graph_val
     else:
         pl.seed_everything(42)
         model = GraphLevelGNN(c_in=tu_dataset.num_node_features,
-                              c_out=1 if tu_dataset.num_classes==2 else tu_dataset.num_classes,
+                              c_out=1 if tu_dataset.num_classes == 2 else tu_dataset.num_classes,
                               **model_kwargs)
         trainer.fit(model, graph_train_loader, graph_val_loader)
         model = GraphLevelGNN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
@@ -85,7 +86,6 @@ def train_graph_classifier(model_name, tu_dataset, graph_train_loader, graph_val
     test_result = trainer.test(model, graph_test_loader, verbose=False)
     result = {"test": test_result[0]['test_acc'], "train": train_result[0]['test_acc']}
     return model, result
-
 
 
 def run():
@@ -102,31 +102,31 @@ def run():
     train_dataset = tu_dataset[:int(data_len * train_split)]
     test_dataset = tu_dataset[int(data_len * train_split):]
 
-    print(f"train: {len(train_dataset)}")
-    print(f"test: {len(test_dataset)}")
     # torch.manual_seed(42)
     # tu_dataset.shuffle()
     # train_dataset = tu_dataset[:150]
     # test_dataset = tu_dataset[150:]
 
-    graph_train_loader = geom_data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-    graph_val_loader = geom_data.DataLoader(test_dataset,
-                                            batch_size=64)
-    # Additional loader if you want to change to a larger dataset
-    graph_test_loader = geom_data.DataLoader(test_dataset, batch_size=64)
+    print(f"train: {len(train_dataset)}")
+    print(f"test: {len(test_dataset)}")
 
-    batch = next(iter(graph_test_loader))
+    train_loader = geom_data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+    val_loader = geom_data.DataLoader(test_dataset,
+                                      batch_size=64)  # Additional loader if you want to change to a larger dataset
+    test_loader = geom_data.DataLoader(test_dataset, batch_size=64)
+
+    batch = next(iter(test_loader))
     print("Batch:", batch)
     print("Labels:", batch.y[:10])
     print("Batch indices:", batch.batch[:40])
     #
-    model, result = train_graph_classifier(model_name="GraphConv",
+    model, result = train_graph_classifier(model_name="GAT",
                                            tu_dataset=tu_dataset,
-                                           graph_train_loader=graph_train_loader,
-                                           graph_val_loader=graph_val_loader,
-                                           graph_test_loader=graph_test_loader,
+                                           graph_train_loader=train_loader,
+                                           graph_val_loader=val_loader,
+                                           graph_test_loader=test_loader,
                                            c_hidden=256,
-                                           layer_name="GraphConv",
+                                           layer_name="GAT",
                                            num_layers=3,
                                            dp_rate_linear=0.5,
                                            dp_rate=0.0)
@@ -135,33 +135,5 @@ def run():
     print(f"Test performance:  {100.0 * result['test']:4.2f}%")
 
 
-def train(model, train_loader):
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-    model.train()
-    for data in train_loader:
-        data = data.to(device)
-        optimizer.zero_grad()
-        output = model(data.x, data.edge_index, data.batch)
-        loss = F.nll_loss(output, data.y)
-        loss.backward()
-        optimizer.step()
-
-
-def test(model, test_loader):
-    model.eval()
-    correct = 0
-    total = 0
-    for data in test_loader:
-        data = data.to(device)
-        output = model(data.x, data.edge_index, data.batch)
-        _, predicted = torch.max(output.data, 1)
-        total += data.y.size(0)
-        correct += (predicted == data.y).sum().item()
-    accuracy = 100 * correct / total
-    return accuracy
-
-
 if __name__ == '__main__':
     run()
-
